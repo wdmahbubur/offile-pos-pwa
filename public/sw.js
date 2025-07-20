@@ -134,10 +134,13 @@ async function syncPendingSales() {
   }
 }
 
-// Push notification event
+// Enhanced push notification event
 self.addEventListener("push", (event) => {
-  const options = {
-    body: event.data ? event.data.text() : "New notification",
+  console.log("Push notification received:", event)
+
+  let notificationData = {
+    title: "POS System",
+    body: "New notification",
     icon: "/icon-192x192.png",
     badge: "/badge-72x72.png",
     vibrate: [100, 50, 100],
@@ -147,5 +150,93 @@ self.addEventListener("push", (event) => {
     },
   }
 
-  event.waitUntil(self.registration.showNotification("POS System", options))
+  // Parse push data if available
+  if (event.data) {
+    try {
+      const pushData = event.data.json()
+      notificationData = { ...notificationData, ...pushData }
+    } catch (error) {
+      console.error("Failed to parse push data:", error)
+      notificationData.body = event.data.text()
+    }
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(notificationData.title, {
+      body: notificationData.body,
+      icon: notificationData.icon,
+      badge: notificationData.badge,
+      vibrate: notificationData.vibrate,
+      data: notificationData.data,
+      tag: notificationData.tag || "pos-notification",
+      requireInteraction: notificationData.requireInteraction || false,
+      actions: notificationData.actions || [],
+    }),
+  )
+})
+
+// Handle notification clicks
+self.addEventListener("notificationclick", (event) => {
+  console.log("Notification clicked:", event.notification.data)
+
+  event.notification.close()
+
+  // Handle different notification types
+  const data = event.notification.data
+
+  if (data && data.type) {
+    switch (data.type) {
+      case "sync-success":
+        // Open the sales history page
+        event.waitUntil(
+          clients.matchAll().then((clientList) => {
+            if (clientList.length > 0) {
+              clientList[0].postMessage({
+                type: "NAVIGATE_TO_SALES_HISTORY",
+                saleId: data.saleId,
+              })
+              return clientList[0].focus()
+            }
+            return clients.openWindow("/?tab=history")
+          }),
+        )
+        break
+
+      case "sync-error":
+        // Open the app and try to sync again
+        event.waitUntil(
+          clients.matchAll().then((clientList) => {
+            if (clientList.length > 0) {
+              clientList[0].postMessage({ type: "RETRY_SYNC" })
+              return clientList[0].focus()
+            }
+            return clients.openWindow("/")
+          }),
+        )
+        break
+
+      case "low-stock":
+        // Open the admin panel
+        event.waitUntil(
+          clients.matchAll().then((clientList) => {
+            if (clientList.length > 0) {
+              return clientList[0].focus()
+            }
+            return clients.openWindow("/admin")
+          }),
+        )
+        break
+
+      default:
+        // Default action - just open the app
+        event.waitUntil(
+          clients.matchAll().then((clientList) => {
+            if (clientList.length > 0) {
+              return clientList[0].focus()
+            }
+            return clients.openWindow("/")
+          }),
+        )
+    }
+  }
 })

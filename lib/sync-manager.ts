@@ -1,6 +1,6 @@
 import { dbManager } from "./indexeddb"
 import { apiManager } from "./api"
-
+import { notificationManager } from "./notification-manager"
 class SyncManager {
   private isOnline = false
   private syncInProgress = false
@@ -81,10 +81,15 @@ class SyncManager {
 
             // Notify UI
             this.notifyUI("SALE_SYNCED", { saleId: sale.id })
+
+            // Show success notification
+            await notificationManager.notifySyncSuccess(sale.id, sale.total_amount)
+
             console.log(`Successfully synced sale: ${sale.id}`)
           }
         } catch (saleError) {
           console.error(`Failed to sync individual sale ${sale.id}:`, saleError)
+          await notificationManager.notifySyncError(sale.id, "Sync failed")
           // Continue with other sales
         }
       }
@@ -184,7 +189,7 @@ class SyncManager {
 
   async isReallyOnline(): Promise<boolean> {
       try {
-          const response = await fetch("https://backend.sharedtoday.com/test", {
+          const response = await fetch("https://v0-offline-pos.vercel.app/api/health", {
           method: "GET",
           cache: "no-cache"
           });
@@ -192,6 +197,22 @@ class SyncManager {
       } catch (err) {
           return false;
       }
+  }
+
+  // Check for low stock and notify
+  async checkLowStock(): Promise<void> {
+    if (typeof window === "undefined") return
+
+    try {
+      const products = await dbManager.getProducts()
+      const lowStockProducts = products.filter((p) => p.stock <= 10 && p.stock > 0)
+
+      for (const product of lowStockProducts) {
+        await notificationManager.notifyLowStock(product.name, product.stock)
+      }
+    } catch (error) {
+      console.error("Failed to check low stock:", error)
+    }
   }
 }
 
@@ -206,6 +227,7 @@ export const syncManager = (() => {
       requestBackgroundSync: async () => {},
       getOnlineStatus: () => false,
       forceSyncNow: async () => false,
+       checkLowStock: async () => {},
     }
   }
 

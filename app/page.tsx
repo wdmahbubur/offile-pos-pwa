@@ -2,13 +2,16 @@
 
 import { useState, useEffect } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Store, History } from "lucide-react"
+import { Store, History, Settings } from "lucide-react"
 import ProductList from "@/components/product-list"
 import Cart from "@/components/cart"
 import Checkout from "@/components/checkout"
 import SalesHistory from "@/components/sales-history"
 import StatusIndicator from "@/components/status-indicator"
+import NotificationSettings from "@/components/notification-settings"
 import { type CartItem, dbManager } from "@/lib/indexeddb"
+import { syncManager } from "@/lib/sync-manager"
+import { notificationManager } from "@/lib/notification-manager"
 
 export default function POSSystem() {
   const [cartItems, setCartItems] = useState<CartItem[]>([])
@@ -29,15 +32,30 @@ export default function POSSystem() {
             // Wait for service worker to be ready
             await navigator.serviceWorker.ready
             console.log("Service Worker is ready")
+
+            // Listen for service worker messages
+            navigator.serviceWorker.addEventListener("message", (event) => {
+              handleServiceWorkerMessage(event.data)
+            })
           } catch (swError) {
             console.warn("Service Worker registration failed:", swError)
             // App can still work without service worker
           }
         }
 
+        // Initialize notification manager
+        await notificationManager.requestPermission()
+
+
         // Initialize IndexedDB and load cart
         // await dbManager.initializeSampleData()
         await loadCart()
+
+
+        // Check for low stock periodically
+        setInterval(() => {
+          syncManager.checkLowStock()
+        }, 300000) // Check every 5 minutes
         console.log("App initialization complete")
       } catch (error) {
         console.error("App initialization failed:", error)
@@ -47,6 +65,19 @@ export default function POSSystem() {
 
     initializeApp()
   }, [])
+
+  const handleServiceWorkerMessage = (data: any) => {
+    switch (data.type) {
+      case "NAVIGATE_TO_SALES_HISTORY":
+        setActiveTab("history")
+        break
+      case "RETRY_SYNC":
+        syncManager.forceSyncNow()
+        break
+      default:
+        console.log("Unknown service worker message:", data)
+    }
+  }
 
   const loadCart = async () => {
     try {
@@ -142,7 +173,7 @@ export default function POSSystem() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-2 mb-8">
+          <TabsList className="grid w-full grid-cols-3 mb-8">
             <TabsTrigger value="pos" className="flex items-center space-x-2">
               <Store className="h-4 w-4" />
               <span>Point of Sale</span>
@@ -150,6 +181,10 @@ export default function POSSystem() {
             <TabsTrigger value="history" className="flex items-center space-x-2">
               <History className="h-4 w-4" />
               <span>Sales History</span>
+            </TabsTrigger>
+            <TabsTrigger value="settings" className="flex items-center space-x-2">
+              <Settings className="h-4 w-4" />
+              <span>Settings</span>
             </TabsTrigger>
           </TabsList>
 
@@ -159,6 +194,12 @@ export default function POSSystem() {
 
           <TabsContent value="history">
             <SalesHistory />
+          </TabsContent>
+
+          <TabsContent value="settings">
+            <div className="space-y-6">
+              <NotificationSettings />
+            </div>
           </TabsContent>
         </Tabs>
       </main>
