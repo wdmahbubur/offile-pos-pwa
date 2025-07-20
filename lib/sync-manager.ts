@@ -16,18 +16,29 @@ class SyncManager {
   private initialize() {
     if (this.initialized) return
 
-    // Set initial online status
-    this.isOnline = navigator.onLine
-
-    // Listen for online/offline events
-    window.addEventListener("online", () => {
-      this.isOnline = true
-      this.syncPendingSales()
+    // Check initial online status
+    this.isReallyOnline().then(isOnline => {
+      this.isOnline = isOnline
+      if (isOnline) {
+        this.syncPendingSales() // Start syncing if online
+      }
     })
 
-    window.addEventListener("offline", () => {
-      this.isOnline = false
-    })
+    setInterval(() => {
+      this.isReallyOnline().then(isOnline => {
+          if (isOnline) {
+              this.isOnline = true;
+              this.syncPendingSales(); // Start syncing if online
+              this.notifyUI("Online", this.isOnline);
+          } else {
+              this.isOnline = false;
+              this.notifyUI("Online", this.isOnline);
+          }
+          
+      });
+    }, 5000) // Check every 5 seconds
+    
+    
 
     // Listen for service worker messages
     if ("serviceWorker" in navigator) {
@@ -169,6 +180,18 @@ class SyncManager {
       console.error("Force sync failed:", error)
       return false
     }
+  }
+
+  async isReallyOnline(): Promise<boolean> {
+      try {
+          const response = await fetch("https://backend.sharedtoday.com/test", {
+          method: "GET",
+          cache: "no-cache"
+          });
+          return response.ok;
+      } catch (err) {
+          return false;
+      }
   }
 }
 

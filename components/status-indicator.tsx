@@ -39,11 +39,11 @@ export default function StatusIndicator() {
     const handleOnline = () => updateStatus()
     const handleOffline = () => updateStatus()
 
-    window.addEventListener("online", handleOnline)
-    window.addEventListener("offline", handleOffline)
 
     // Listen for sync updates
     const handleSyncUpdate = () => {
+      // console.log(`Current online status: ${syncManager.getOnlineStatus()}`)
+      setIsOnline(syncManager.getOnlineStatus())
       loadPendingCount()
     }
 
